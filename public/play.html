@@ -33,7 +33,7 @@ function waiting(text = '') {
 function question(m) {
   myAnswer = null;
   render(`
-    <div class="player-card">
+    <div class="player-card with-options">
       <div class="player-nick">${escapeHtml(nick)}</div>
       <div class="player-q-text">${escapeHtml(m.text)}</div>
       <div class="player-options">

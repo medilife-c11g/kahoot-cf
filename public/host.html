@@ -21,6 +21,8 @@ if (!pin || !token) location.href = '/dashboard.html';
 const root = document.getElementById('root');
 let ws = null;
 let timerHandle = null;
+let gameEnded = false;
+let closeBannerTimer = null;
 
 function render(html) { root.innerHTML = html; }
 
@@ -133,9 +135,22 @@ function connect() {
     if (m.t === 'lobby') lobby(m.players, m.quizTitle);
     else if (m.t === 'question') question(m);
     else if (m.t === 'results') results(m);
-    else if (m.t === 'ended') ended(m);
+    else if (m.t === 'ended') { gameEnded = true; ended(m); }
   });
-  ws.addEventListener('close', () => { render('<div style="text-align:center;padding:60px 0;"><h2>Connection closed</h2><a class="btn" style="margin-top:20px;" href="/dashboard.html">Dashboard</a></div>'); });
+  ws.addEventListener('close', () => {
+    if (gameEnded) return; // final leaderboard already shown — keep it
+    // Soft state: show transient "Reconnecting…" first so a blip doesn't
+    // immediately replace the screen with a hard-failure message.
+    renderReconnecting();
+    if (closeBannerTimer) clearTimeout(closeBannerTimer);
+    closeBannerTimer = setTimeout(() => {
+      render('<div class="host-disconnect bad"><h2>Connection closed</h2><p class="muted">The game session ended or the connection was lost.</p><a class="btn primary" href="/dashboard.html">← Back to dashboard</a></div>');
+    }, 8000);
+  });
+}
+
+function renderReconnecting() {
+  render('<div class="host-disconnect warn"><div class="spinner"></div><h2>Reconnecting…</h2><p class="muted">Hang tight — trying to restore the host link.</p></div>');
 }
 
 function escapeHtml(s) { return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }

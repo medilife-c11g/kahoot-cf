@@ -28,6 +28,35 @@
     </div>
   </main>
 
+  <dialog id="new-quiz-modal" class="modal">
+    <form id="new-quiz-form" class="modal-body" method="dialog">
+      <h2>New quiz</h2>
+      <label>Title
+        <input id="nq-title" type="text" required maxlength="120" placeholder="My great quiz" />
+      </label>
+
+      <hr class="modal-divider" />
+
+      <div class="modal-import">
+        <label style="margin-bottom: 0;">Import from file (optional)
+          <input id="nq-file" type="file" accept=".csv,.json,application/json,text/csv" />
+        </label>
+        <div class="template-row">
+          <button type="button" class="btn" id="dl-csv">↓ CSV template</button>
+          <button type="button" class="btn" id="dl-json">↓ JSON template</button>
+        </div>
+        <p class="muted" style="font-size:12px; margin: 0;">CSV columns: text, option_a, option_b, option_c, option_d, correct_index, time_limit_sec. JSON: {"title", "description", "questions":[{text, options[], correctIndex, timeLimitSec}]}.</p>
+      </div>
+
+      <p id="nq-err" class="modal-err"></p>
+
+      <div class="modal-actions">
+        <button type="button" class="btn" id="nq-cancel">Cancel</button>
+        <button type="submit" class="btn primary" id="nq-submit">Create</button>
+      </div>
+    </form>
+  </dialog>
+
 <script type="module">
 import { api, auth } from '/app.js';
 
@@ -84,12 +113,158 @@ async function delQuiz(id) {
   refresh();
 }
 
-document.getElementById('new').addEventListener('click', async () => {
-  const title = prompt('Quiz title?');
-  if (!title) return;
-  const data = await api.post('/api/quizzes', { title });
-  location.href = `/editor.html?id=${encodeURIComponent(data.id)}`;
+// --- New quiz modal + CSV/JSON import ---
+const modal = document.getElementById('new-quiz-modal');
+const form = document.getElementById('new-quiz-form');
+const titleInput = document.getElementById('nq-title');
+const fileInput = document.getElementById('nq-file');
+const errEl = document.getElementById('nq-err');
+
+document.getElementById('new').addEventListener('click', () => {
+  errEl.textContent = '';
+  titleInput.value = '';
+  fileInput.value = '';
+  modal.showModal();
+  titleInput.focus();
 });
+
+document.getElementById('nq-cancel').addEventListener('click', () => modal.close());
+modal.addEventListener('click', (e) => { if (e.target === modal) modal.close(); });
+
+document.getElementById('dl-csv').addEventListener('click', () =>
+  downloadFile('quiz-template.csv', 'text/csv',
+    'text,option_a,option_b,option_c,option_d,correct_index,time_limit_sec\n' +
+    '"What is 2+2?","3","4","5","6",1,15\n' +
+    '"Capital of France?","Berlin","Madrid","Paris","Rome",2,20\n'));
+
+document.getElementById('dl-json').addEventListener('click', () =>
+  downloadFile('quiz-template.json', 'application/json',
+    JSON.stringify({
+      title: 'My quiz',
+      description: '',
+      questions: [
+        { text: 'What is 2+2?', options: ['3','4','5','6'], correctIndex: 1, timeLimitSec: 15 },
+        { text: 'Capital of France?', options: ['Berlin','Madrid','Paris','Rome'], correctIndex: 2, timeLimitSec: 20 },
+      ],
+    }, null, 2)));
+
+form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  errEl.textContent = '';
+  const title = titleInput.value.trim();
+  if (!title) { errEl.textContent = 'Title is required'; return; }
+  const file = fileInput.files[0];
+
+  let imported = null;
+  if (file) {
+    try { imported = await parseImport(file); }
+    catch (err) { errEl.textContent = 'Import error: ' + err.message; return; }
+  }
+
+  document.getElementById('nq-submit').disabled = true;
+  try {
+    const quiz = await api.post('/api/quizzes', {
+      title,
+      description: imported?.description ?? '',
+    });
+    if (imported?.questions?.length) {
+      for (const q of imported.questions) {
+        await api.post(`/api/quizzes/${quiz.id}/questions`, q);
+      }
+    }
+    modal.close();
+    location.href = `/editor.html?id=${encodeURIComponent(quiz.id)}`;
+  } catch (err) {
+    errEl.textContent = err.message;
+    document.getElementById('nq-submit').disabled = false;
+  }
+});
+
+function downloadFile(name, mime, content) {
+  const blob = new Blob([content], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+async function parseImport(file) {
+  const text = await file.text();
+  const lower = file.name.toLowerCase();
+  let data;
+  if (lower.endsWith('.json') || file.type.includes('json')) {
+    data = JSON.parse(text);
+  } else {
+    data = parseCSV(text);
+  }
+  if (!data || !Array.isArray(data.questions) || data.questions.length === 0) {
+    throw new Error('No questions found');
+  }
+  const questions = data.questions.map((q, idx) => {
+    const opts = (q.options || []).map(String).map((s) => s.trim()).filter(Boolean);
+    if (opts.length < 2 || opts.length > 4) throw new Error(`Question ${idx + 1}: need 2-4 options`);
+    const ci = Number(q.correctIndex);
+    if (!Number.isInteger(ci) || ci < 0 || ci >= opts.length) throw new Error(`Question ${idx + 1}: invalid correctIndex`);
+    const tls = Number(q.timeLimitSec ?? 20);
+    return {
+      text: String(q.text ?? '').trim(),
+      options: opts,
+      correctIndex: ci,
+      timeLimitSec: Math.max(5, Math.min(120, tls)),
+    };
+  });
+  questions.forEach((q, i) => { if (!q.text) throw new Error(`Question ${i + 1}: missing text`); });
+  return { description: data.description ?? '', questions };
+}
+
+function parseCSV(text) {
+  const rows = csvRows(text);
+  if (rows.length === 0) return { questions: [] };
+  const header = rows[0].map((h) => h.trim().toLowerCase());
+  const idx = (k) => header.indexOf(k);
+  const iText = idx('text');
+  const iA = idx('option_a'), iB = idx('option_b'), iC = idx('option_c'), iD = idx('option_d');
+  const iCor = idx('correct_index');
+  const iTime = idx('time_limit_sec');
+  if (iText < 0 || iA < 0 || iB < 0 || iCor < 0) throw new Error('CSV missing required columns');
+  const questions = [];
+  for (let r = 1; r < rows.length; r++) {
+    const row = rows[r];
+    if (row.every((c) => c.trim() === '')) continue;
+    const opts = [row[iA], row[iB], iC >= 0 ? row[iC] : '', iD >= 0 ? row[iD] : '']
+      .map((s) => (s ?? '').trim()).filter(Boolean);
+    questions.push({
+      text: (row[iText] ?? '').trim(),
+      options: opts,
+      correctIndex: Number(row[iCor] ?? 0),
+      timeLimitSec: iTime >= 0 ? Number(row[iTime] ?? 20) : 20,
+    });
+  }
+  return { questions };
+}
+
+function csvRows(text) {
+  const rows = [[]];
+  let cur = '', inQ = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (inQ) {
+      if (c === '"' && text[i + 1] === '"') { cur += '"'; i++; }
+      else if (c === '"') { inQ = false; }
+      else { cur += c; }
+    } else {
+      if (c === '"') inQ = true;
+      else if (c === ',') { rows[rows.length - 1].push(cur); cur = ''; }
+      else if (c === '\n') { rows[rows.length - 1].push(cur); cur = ''; rows.push([]); }
+      else if (c === '\r') { /* skip */ }
+      else cur += c;
+    }
+  }
+  if (cur !== '' || rows[rows.length - 1].length > 0) rows[rows.length - 1].push(cur);
+  if (rows[rows.length - 1].length === 1 && rows[rows.length - 1][0] === '') rows.pop();
+  return rows;
+}
 
 function escape(s) { return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
 

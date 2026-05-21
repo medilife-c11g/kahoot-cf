@@ -75,7 +75,10 @@ function renderQuestions(questions) {
       <div class="q-header">
         <span class="q-num">${idx + 1}</span>
         <input class="q-text" value="${escapeAttr(q.text)}" placeholder="Question text" />
-        <input class="q-time" type="number" min="5" max="120" value="${q.timeLimitSec}" title="Time limit (sec)" />
+        <span class="q-time-wrap" title="Time limit">
+          <input class="q-time" type="number" min="5" max="120" value="${q.timeLimitSec}" />
+          <span class="q-time-unit">sec</span>
+        </span>
         <button class="btn danger" data-del>×</button>
       </div>
       <div class="q-options">
