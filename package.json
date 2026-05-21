@@ -1,20 +1,21 @@
 {
-  "name": "kahoot-cf",
-  "version": "0.1.0",
-  "description": "Self-hostable Kahoot clone on Cloudflare Workers + Durable Objects + D1",
-  "private": true,
-  "type": "module",
-  "scripts": {
-    "dev": "wrangler dev",
-    "deploy": "wrangler deploy",
-    "typecheck": "tsc --noEmit"
-  },
-  "dependencies": {
-    "hono": "^4.6.14"
-  },
-  "devDependencies": {
-    "@cloudflare/workers-types": "^4.20250109.0",
-    "typescript": "^5.7.3",
-    "wrangler": "^4.0.0"
-  }
+	"name": "kahoot-cf",
+	"version": "0.1.0",
+	"description": "Self-hostable Kahoot clone on Cloudflare Workers + Durable Objects + D1",
+	"private": true,
+	"type": "module",
+	"scripts": {
+		"dev": "wrangler dev",
+		"deploy": "wrangler deploy",
+		"typecheck": "tsc --noEmit"
+	},
+	"dependencies": {
+		"hono": "^4.6.14"
+	},
+	"devDependencies": {
+		"@cloudflare/workers-types": "^4.20250109.0",
+		"playwright": "^1.60.0",
+		"typescript": "^5.7.3",
+		"wrangler": "^4.0.0"
+	}
 }
