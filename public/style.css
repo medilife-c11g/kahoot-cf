@@ -543,6 +543,22 @@ textarea { resize: vertical; }
 .deco-row .d-blue   { background: var(--blue); }
 .deco-row .d-black  { background: var(--black); }
 
+/* Inline rename input on quiz list */
+.quiz-title { cursor: pointer; }
+.quiz-title:hover { text-decoration: underline; text-decoration-thickness: 3px; text-underline-offset: 4px; }
+.quiz-title-input {
+  font-family: 'Archivo Black', sans-serif;
+  font-size: 22px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: -0.02em;
+  border: var(--rule-w) solid var(--black);
+  background: var(--yellow);
+  padding: 4px 10px;
+  width: 100%;
+  max-width: 480px;
+}
+
 /* ============ Modal (native <dialog>) ============ */
 dialog.modal {
   border: var(--rule-w-thick) solid var(--black);
@@ -639,8 +655,9 @@ dialog.modal::backdrop {
 }
 
 /* ============ Player — full-size answer buttons ============ */
-.player.player { /* increase specificity */ }
-body.player .stage {
+/* Only the question screen goes full-bleed; waiting/ack/ended keep their
+   centered 540px card courtesy of the base .player .stage rule above. */
+body.player .stage:has(.with-options) {
   max-width: 100%;
   padding: 0;
 }

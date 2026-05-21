@@ -26,8 +26,8 @@ binding = "DB"
 database_name = "kahoot-cf"
 database_id = "41b6ef57-41e4-4021-ac14-ceb78303776a"
 
-# Zero Trust Access configuration.
-# After creating your Access Application, paste the values here.
+# Zero Trust Access — host app on kahoot-cf-host, AUD below. Bypass apps
+# (kahoot-cf-static, kahoot-cf-player-api) cover the public paths.
 [vars]
 CF_ACCESS_TEAM_DOMAIN = "htlin"
 CF_ACCESS_AUD = "4d0cebe9ab9b11dc3168539fadeb27c7a728e66a12d3b1aa36810435722c562f"

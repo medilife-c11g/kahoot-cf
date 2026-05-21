@@ -83,7 +83,7 @@ async function refresh() {
     li.className = 'quiz-item';
     li.innerHTML = `
       <div>
-        <div class="quiz-title">${escape(q.title)}</div>
+        <div class="quiz-title" data-rename="${q.id}" data-current="${escapeAttr(q.title)}" role="button" tabindex="0" title="Click to rename">${escape(q.title)}</div>
         <div class="quiz-meta">${escape(q.description || 'No description')}</div>
       </div>
       <div class="actions">
@@ -96,7 +96,42 @@ async function refresh() {
   }
   listEl.querySelectorAll('[data-host]').forEach((b) => b.addEventListener('click', () => hostGame(b.dataset.host)));
   listEl.querySelectorAll('[data-del]').forEach((b) => b.addEventListener('click', () => delQuiz(b.dataset.del)));
+  listEl.querySelectorAll('[data-rename]').forEach((el) => {
+    const start = () => renameQuiz(el);
+    el.addEventListener('click', start);
+    el.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); start(); } });
+  });
 }
+
+async function renameQuiz(el) {
+  const id = el.dataset.rename;
+  const current = el.dataset.current;
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.value = current;
+  input.maxLength = 120;
+  input.className = 'quiz-title-input';
+  el.replaceWith(input);
+  input.focus();
+  input.select();
+
+  let done = false;
+  const finish = async (commit) => {
+    if (done) return; done = true;
+    const next = input.value.trim();
+    if (commit && next && next !== current) {
+      try { await api.put(`/api/quizzes/${id}`, { title: next }); } catch (e) { alert(e.message); }
+    }
+    refresh();
+  };
+  input.addEventListener('blur', () => finish(true));
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); finish(true); }
+    if (e.key === 'Escape') { e.preventDefault(); finish(false); }
+  });
+}
+
+function escapeAttr(s) { return String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
 
 async function hostGame(quizId) {
   try {

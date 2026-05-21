@@ -8,7 +8,7 @@
 // Local dev: set DEV_USER_EMAIL in .dev.vars to bypass Access entirely.
 
 import { Hono } from 'hono';
-import { verifyWithJwks } from 'hono/utils/jwt/jwt';
+import { verifyWithJwks } from 'hono/jwt';
 import { newId } from './crypto';
 import type { Env, AuthVars } from './types';
 
