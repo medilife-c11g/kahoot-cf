@@ -552,6 +552,12 @@ dialog.modal {
   max-width: 520px;
   width: calc(100% - 32px);
   box-shadow: 8px 8px 0 var(--black);
+  /* Center on screen — overrides default top alignment in older browsers */
+  position: fixed;
+  inset: 0;
+  margin: auto;
+  max-height: calc(100dvh - 64px);
+  overflow: auto;
 }
 dialog.modal::backdrop {
   background: rgba(0,0,0,0.55);
