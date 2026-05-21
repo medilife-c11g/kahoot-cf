@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Play — kahoot-cf</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body class="player">
+  <main id="root" class="stage"></main>
+
+<script type="module">
+const pin = sessionStorage.getItem('play-pin');
+const nick = sessionStorage.getItem('play-nick');
+if (!pin || !nick) location.href = '/';
+
+const root = document.getElementById('root');
+let ws = null;
+let myAnswer = null;
+
+function render(html) { root.innerHTML = html; }
+
+function waiting(text = '') {
+  render(`
+    <div class="player-card">
+      <div class="player-nick">${escapeHtml(nick)}</div>
+      <h2>${text || 'Waiting…'}</h2>
+      <div class="spinner"></div>
+    </div>
+  `);
+}
+
+function question(m) {
+  myAnswer = null;
+  render(`
+    <div class="player-card">
+      <div class="player-nick">${escapeHtml(nick)}</div>
+      <div class="player-q-text">${escapeHtml(m.text)}</div>
+      <div class="player-options">
+        ${m.options.map((o, i) => `<button class="opt-tile opt-${i}" data-i="${i}"><span class="opt-letter">${'ABCD'[i]}</span>${escapeHtml(o)}</button>`).join('')}
+      </div>
+    </div>
+  `);
+  root.querySelectorAll('button[data-i]').forEach((b) => {
+    b.addEventListener('click', () => {
+      if (myAnswer !== null) return;
+      myAnswer = parseInt(b.dataset.i, 10);
+      send({ t: 'player-answer', choice: myAnswer });
+      root.querySelectorAll('button[data-i]').forEach((x) => {
+        x.disabled = true;
+        if (parseInt(x.dataset.i, 10) !== myAnswer) x.classList.add('dim');
+      });
+    });
+  });
+}
+
+function ack(correct) {
+  if (correct === null) { waiting('Locked in.'); return; }
+  render(`
+    <div class="player-card ${correct ? 'good' : 'bad'}">
+      <div class="player-nick">${escapeHtml(nick)}</div>
+      <h1>${correct ? '✓' : '✗'}</h1>
+      <h2>${correct ? 'Correct' : 'Wrong'}</h2>
+    </div>
+  `);
+}
+
+function ended(m) {
+  const me = m.leaderboard.find((p) => p.nickname === nick);
+  const rank = me ? m.leaderboard.indexOf(me) + 1 : null;
+  render(`
+    <div class="player-card">
+      <div class="player-nick">${escapeHtml(nick)}</div>
+      <h2>Game over</h2>
+      ${me ? `<p class="big-score">${me.score}</p><p class="muted" style="font-weight:700; text-transform:uppercase; letter-spacing:0.15em;">Rank ${rank} of ${m.leaderboard.length}</p>` : ''}
+      <a class="btn" href="/">Home</a>
+    </div>
+  `);
+}
+
+function send(msg) { if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg)); }
+
+function connect() {
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  ws = new WebSocket(`${proto}//${location.host}/api/games/ws/play?pin=${encodeURIComponent(pin)}&nickname=${encodeURIComponent(nick)}`);
+  ws.addEventListener('open', () => waiting('Joined! Waiting for the host…'));
+  ws.addEventListener('message', (ev) => {
+    const m = JSON.parse(ev.data);
+    if (m.t === 'question') question(m);
+    else if (m.t === 'answer-ack') ack(m.correct);
+    else if (m.t === 'results') waiting('Next up…');
+    else if (m.t === 'ended') ended(m);
+  });
+  ws.addEventListener('close', () => render('<div class="player-card"><h2>Disconnected</h2><a class="btn" href="/">Home</a></div>'));
+}
+
+function escapeHtml(s) { return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+
+connect();
+</script>
+</body>
+</html>

@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Host — kahoot-cf</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body class="host">
+  <header class="topbar">
+    <a href="/dashboard.html" class="brand">← kahoot-cf</a>
+    <nav><span>Hosting</span></nav>
+  </header>
+  <main id="root" class="stage"></main>
+
+<script type="module">
+const pin = sessionStorage.getItem('host-pin');
+const token = sessionStorage.getItem('host-token');
+if (!pin || !token) location.href = '/dashboard.html';
+
+const root = document.getElementById('root');
+let ws = null;
+let timerHandle = null;
+
+function render(html) { root.innerHTML = html; }
+
+function lobby(players, quizTitle) {
+  render(`
+    <div class="lobby">
+      <div class="lobby-head">
+        <h1 class="lobby-quiz-title">
+          <small>Now playing</small>
+          ${escapeHtml(quizTitle)}
+        </h1>
+        <div class="pin-display">
+          <div class="pin-label">Game PIN</div>
+          <div class="pin">${pin.replace(/(\d{3})(\d{3})/, '$1 $2')}</div>
+          <div class="pin-hint">Players join at <strong>${location.host}</strong></div>
+        </div>
+      </div>
+
+      <div class="players">
+        <div class="players-count">${players.length} player${players.length === 1 ? '' : 's'}</div>
+        <ul class="player-chips">
+          ${players.map((p) => `<li class="chip">${escapeHtml(p.nickname)}</li>`).join('')}
+        </ul>
+      </div>
+
+      <div class="start-row">
+        <button id="start" class="primary big" ${players.length === 0 ? 'disabled' : ''}>Start the game</button>
+      </div>
+    </div>
+  `);
+  document.getElementById('start')?.addEventListener('click', () => send({ t: 'host-start' }));
+}
+
+function question(m) {
+  if (timerHandle) clearInterval(timerHandle);
+  let remaining = m.timeLimitSec;
+  render(`
+    <div class="q-stage">
+      <div class="q-header-stage">
+        <span>Question ${m.index + 1} / ${m.total}</span>
+        <span class="timer" id="timer">${remaining}</span>
+      </div>
+      <h1 class="q-text-stage">${escapeHtml(m.text)}</h1>
+      <div class="q-options-stage">
+        ${m.options.map((o, i) => `<div class="opt-tile opt-${i}"><span class="opt-letter">${'ABCD'[i]}</span>${escapeHtml(o)}</div>`).join('')}
+      </div>
+      <div class="answer-count" id="answer-count">Waiting for answers…</div>
+    </div>
+  `);
+  timerHandle = setInterval(() => {
+    remaining = Math.max(0, m.timeLimitSec - Math.round((Date.now() - m.startedAt) / 1000));
+    const t = document.getElementById('timer');
+    if (t) t.textContent = remaining;
+    if (remaining <= 0) { clearInterval(timerHandle); timerHandle = null; }
+  }, 250);
+}
+
+function results(m) {
+  if (timerHandle) { clearInterval(timerHandle); timerHandle = null; }
+  render(`
+    <div class="results-stage">
+      <h2>Results</h2>
+      <div class="q-options-stage">
+        ${m.counts.map((c, i) => `
+          <div class="opt-tile opt-${i} ${i === m.correctIndex ? 'correct' : 'dim'}">
+            <span class="opt-letter">${'ABCD'[i]}</span>
+            <span class="opt-count">${c}</span>
+          </div>
+        `).join('')}
+      </div>
+      <div class="leaderboard">
+        <h3>Leaderboard</h3>
+        <ol>${m.leaderboard.map((p) => `<li><span>${escapeHtml(p.nickname)}</span><span>${p.score}</span></li>`).join('')}</ol>
+      </div>
+      <div class="result-actions">
+        <button class="primary big" id="next">Next →</button>
+        <button class="danger" id="end">End game</button>
+      </div>
+    </div>
+  `);
+  document.getElementById('next')?.addEventListener('click', () => send({ t: 'host-next' }));
+  document.getElementById('end')?.addEventListener('click', () => send({ t: 'host-end' }));
+}
+
+function ended(m) {
+  render(`
+    <div class="ended-stage">
+      <h1><span class="yellow-circle"></span>Final</h1>
+      <ol class="final-list">
+        ${m.leaderboard.slice(0, 20).map((p, i) => `
+          <li class="final-row rank-${i + 1}">
+            <span class="rank">${i + 1}</span>
+            <span class="who">${escapeHtml(p.nickname)}</span>
+            <span class="score">${p.score}</span>
+          </li>
+        `).join('')}
+      </ol>
+      <a class="btn" style="margin-top: 32px;" href="/dashboard.html">← Back to dashboard</a>
+    </div>
+  `);
+}
+
+function send(msg) { if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg)); }
+
+function connect() {
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  ws = new WebSocket(`${proto}//${location.host}/api/games/ws/host?pin=${encodeURIComponent(pin)}&token=${encodeURIComponent(token)}`);
+  ws.addEventListener('message', (ev) => {
+    const m = JSON.parse(ev.data);
+    if (m.t === 'lobby') lobby(m.players, m.quizTitle);
+    else if (m.t === 'question') question(m);
+    else if (m.t === 'results') results(m);
+    else if (m.t === 'ended') ended(m);
+  });
+  ws.addEventListener('close', () => { render('<div style="text-align:center;padding:60px 0;"><h2>Connection closed</h2><a class="btn" style="margin-top:20px;" href="/dashboard.html">Dashboard</a></div>'); });
+}
+
+function escapeHtml(s) { return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+
+connect();
+</script>
+</body>
+</html>

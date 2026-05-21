@@ -1,0 +1,4 @@
+# Copy this to `.dev.vars` for local development.
+# Setting DEV_USER_EMAIL bypasses Cloudflare Access verification entirely
+# so you can run the app locally without a Zero Trust tunnel.
+DEV_USER_EMAIL = "dev@local.test"

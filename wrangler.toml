@@ -1,0 +1,33 @@
+name = "kahoot-cf"
+main = "src/index.ts"
+account_id = "3a77813251d473c40d8873a59f6c0e80"
+compatibility_date = "2025-04-01"
+compatibility_flags = ["nodejs_compat"]
+
+workers_dev = false
+routes = [
+  { pattern = "kahoot.hsiehting.com", custom_domain = true },
+]
+
+[assets]
+directory = "./public"
+binding = "ASSETS"
+
+[[durable_objects.bindings]]
+name = "GAME_ROOM"
+class_name = "GameRoom"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["GameRoom"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "kahoot-cf"
+database_id = "41b6ef57-41e4-4021-ac14-ceb78303776a"
+
+# Zero Trust Access configuration.
+# After creating your Access Application, paste the values here.
+[vars]
+CF_ACCESS_TEAM_DOMAIN = "htlin"
+CF_ACCESS_AUD = "4d0cebe9ab9b11dc3168539fadeb27c7a728e66a12d3b1aa36810435722c562f"

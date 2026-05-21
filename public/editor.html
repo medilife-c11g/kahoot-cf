@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Editor — kahoot-cf</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <a href="/dashboard.html" class="brand">← kahoot-cf</a>
+    <nav><a href="/dashboard.html">Dashboard</a></nav>
+  </header>
+
+  <main class="container">
+    <section class="editor-head">
+      <input id="title" class="title-input" placeholder="Quiz title" />
+      <textarea id="description" placeholder="Description (optional)" rows="2"></textarea>
+      <p id="save-status" class="small muted" style="margin-top:8px;"></p>
+    </section>
+
+    <section>
+      <div class="row">
+        <h2>Questions <span id="qcount" class="muted"></span></h2>
+        <button id="addq" class="primary">+ Add question</button>
+      </div>
+      <ul id="questions" class="questions-list"></ul>
+    </section>
+  </main>
+
+<script type="module">
+import { api, auth } from '/app.js';
+
+const me = await auth.me();
+if (!me) { location.href = '/'; throw new Error('not authed'); }
+
+const params = new URLSearchParams(location.search);
+const quizId = params.get('id');
+if (!quizId) location.href = '/dashboard.html';
+
+const titleEl = document.getElementById('title');
+const descEl = document.getElementById('description');
+const qsEl = document.getElementById('questions');
+const qcountEl = document.getElementById('qcount');
+const saveStatus = document.getElementById('save-status');
+
+let saveTimer = null;
+function scheduleSave() {
+  if (saveTimer) clearTimeout(saveTimer);
+  saveStatus.textContent = 'Saving…';
+  saveTimer = setTimeout(async () => {
+    try {
+      await api.put(`/api/quizzes/${quizId}`, { title: titleEl.value, description: descEl.value });
+      saveStatus.textContent = '✓ Saved';
+    } catch (e) { saveStatus.textContent = '× Save failed: ' + e.message; }
+  }, 500);
+}
+titleEl.addEventListener('input', scheduleSave);
+descEl.addEventListener('input', scheduleSave);
+
+async function load() {
+  const data = await api.get(`/api/quizzes/${quizId}`);
+  titleEl.value = data.quiz.title;
+  descEl.value = data.quiz.description ?? '';
+  renderQuestions(data.questions);
+}
+
+function renderQuestions(questions) {
+  qsEl.innerHTML = '';
+  qcountEl.textContent = `(${questions.length})`;
+  questions.forEach((q, idx) => {
+    const li = document.createElement('li');
+    li.className = 'question-item';
+    li.innerHTML = `
+      <div class="q-header">
+        <span class="q-num">${idx + 1}</span>
+        <input class="q-text" value="${escapeAttr(q.text)}" placeholder="Question text" />
+        <input class="q-time" type="number" min="5" max="120" value="${q.timeLimitSec}" title="Time limit (sec)" />
+        <button class="btn danger" data-del>×</button>
+      </div>
+      <div class="q-options">
+        ${q.options.map((o, i) => `
+          <label class="q-option opt-${i}">
+            <input type="radio" name="correct-${q.id}" ${i === q.correctIndex ? 'checked' : ''} data-correct="${i}" />
+            <input class="q-opt-text" data-opt="${i}" value="${escapeAttr(o)}" placeholder="Option ${'ABCD'[i]}" />
+          </label>
+        `).join('')}
+      </div>
+    `;
+    qsEl.appendChild(li);
+
+    const save = debounce(async () => {
+      const text = li.querySelector('.q-text').value;
+      const timeLimitSec = parseInt(li.querySelector('.q-time').value, 10) || 20;
+      const options = [...li.querySelectorAll('.q-opt-text')].map((el) => el.value);
+      const correctIndex = parseInt(li.querySelector('input[type=radio]:checked')?.dataset.correct ?? '0', 10);
+      try {
+        await api.put(`/api/quizzes/${quizId}/questions/${q.id}`, { text, timeLimitSec, options, correctIndex });
+      } catch {}
+    }, 400);
+    li.querySelectorAll('input').forEach((el) => el.addEventListener('input', save));
+    li.querySelectorAll('input[type=radio]').forEach((el) => el.addEventListener('change', save));
+    li.querySelector('[data-del]').addEventListener('click', async () => {
+      if (!confirm('Delete this question?')) return;
+      await api.del(`/api/quizzes/${quizId}/questions/${q.id}`);
+      load();
+    });
+  });
+}
+
+document.getElementById('addq').addEventListener('click', async () => {
+  await api.post(`/api/quizzes/${quizId}/questions`, {
+    text: 'New question',
+    options: ['Option A', 'Option B', 'Option C', 'Option D'],
+    correctIndex: 0,
+    timeLimitSec: 20,
+  });
+  load();
+});
+
+function escapeAttr(s) { return String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+function debounce(fn, ms) { let t; return (...a) => { clearTimeout(t); t = setTimeout(() => fn(...a), ms); }; }
+
+load();
+</script>
+</body>
+</html>

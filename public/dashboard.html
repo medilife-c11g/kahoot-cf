@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Dashboard — kahoot-cf</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <a href="/" class="brand">kahoot-cf</a>
+    <nav id="nav"></nav>
+  </header>
+
+  <main class="container">
+    <div class="row">
+      <h1>Your<br>quizzes.</h1>
+      <button id="new" class="primary big">+ New quiz</button>
+    </div>
+    <ul id="list" class="quiz-list"></ul>
+    <p id="empty" class="muted hidden" style="margin-top: 24px;">No quizzes yet. Create one to get started.</p>
+
+    <div class="deco-row">
+      <div class="d-red"></div>
+      <div class="d-yellow"></div>
+      <div class="d-blue"></div>
+      <div class="d-black"></div>
+    </div>
+  </main>
+
+<script type="module">
+import { api, auth } from '/app.js';
+
+const me = await auth.me();
+if (!me) { location.href = '/'; throw new Error('not authed'); }
+
+document.getElementById('nav').innerHTML = `<span>${escape(me.email)}</span>`;
+
+const listEl = document.getElementById('list');
+const emptyEl = document.getElementById('empty');
+
+async function refresh() {
+  const { quizzes } = await api.get('/api/quizzes');
+  listEl.innerHTML = '';
+  if (!quizzes.length) {
+    emptyEl.classList.remove('hidden');
+    listEl.style.border = 0;
+    return;
+  }
+  emptyEl.classList.add('hidden');
+  listEl.style.border = '';
+  for (const q of quizzes) {
+    const li = document.createElement('li');
+    li.className = 'quiz-item';
+    li.innerHTML = `
+      <div>
+        <div class="quiz-title">${escape(q.title)}</div>
+        <div class="quiz-meta">${escape(q.description || 'No description')}</div>
+      </div>
+      <div class="actions">
+        <a class="btn" href="/editor.html?id=${encodeURIComponent(q.id)}">Edit</a>
+        <button class="btn primary" data-host="${q.id}">Host</button>
+        <button class="btn danger" data-del="${q.id}">Delete</button>
+      </div>
+    `;
+    listEl.appendChild(li);
+  }
+  listEl.querySelectorAll('[data-host]').forEach((b) => b.addEventListener('click', () => hostGame(b.dataset.host)));
+  listEl.querySelectorAll('[data-del]').forEach((b) => b.addEventListener('click', () => delQuiz(b.dataset.del)));
+}
+
+async function hostGame(quizId) {
+  try {
+    const data = await api.post('/api/games', { quizId });
+    sessionStorage.setItem('host-pin', data.pin);
+    sessionStorage.setItem('host-token', data.hostToken);
+    location.href = '/host.html';
+  } catch (e) { alert(e.message); }
+}
+
+async function delQuiz(id) {
+  if (!confirm('Delete this quiz?')) return;
+  await api.del(`/api/quizzes/${id}`);
+  refresh();
+}
+
+document.getElementById('new').addEventListener('click', async () => {
+  const title = prompt('Quiz title?');
+  if (!title) return;
+  const data = await api.post('/api/quizzes', { title });
+  location.href = `/editor.html?id=${encodeURIComponent(data.id)}`;
+});
+
+function escape(s) { return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+
+refresh();
+</script>
+</body>
+</html>

@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>kahoot-cf</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body class="landing">
+  <header class="topbar">
+    <a href="/" class="brand">kahoot-cf</a>
+    <nav><a href="/dashboard.html">Host area →</a></nav>
+  </header>
+
+  <section class="landing-hero">
+    <div class="shape circle-yellow"></div>
+    <div class="shape square-blue"></div>
+    <div class="shape tri-red"></div>
+    <h1>
+      <span class="accent-red">Live</span> quizzes<br>
+      at <span class="accent-blue">the</span> edge.
+    </h1>
+  </section>
+
+  <main class="landing-main">
+    <section class="landing-panel join">
+      <h2><span class="marker"></span> Join a game</h2>
+      <form id="join-form">
+        <input id="pin" placeholder="6-digit PIN" inputmode="numeric" pattern="[0-9]{4,8}" required autocomplete="off" />
+        <input id="nickname" placeholder="Your nickname" maxlength="32" required autocomplete="off" />
+        <button class="primary">Enter game</button>
+      </form>
+      <p id="join-err" class="err"></p>
+    </section>
+
+    <section class="landing-panel host">
+      <h2><span class="marker"></span> Host a game</h2>
+      <p style="margin-bottom: 16px;">Sign in with your organization's identity provider through Cloudflare Zero Trust.</p>
+      <a class="btn secondary big" href="/dashboard.html" style="width: 100%; text-align: center;">Sign in &amp; host →</a>
+    </section>
+  </main>
+
+  <div class="deco-row">
+    <div class="d-red"></div>
+    <div class="d-yellow"></div>
+    <div class="d-blue"></div>
+    <div class="d-black"></div>
+  </div>
+
+<script type="module">
+document.getElementById('join-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const pin = document.getElementById('pin').value.trim();
+  const nickname = document.getElementById('nickname').value.trim();
+  const errEl = document.getElementById('join-err');
+  errEl.textContent = '';
+  try {
+    const r = await fetch(`/api/games/${encodeURIComponent(pin)}/check`);
+    const data = await r.json();
+    if (!data.ok) throw new Error('Game not found');
+    sessionStorage.setItem('play-pin', pin);
+    sessionStorage.setItem('play-nick', nickname);
+    location.href = '/play.html';
+  } catch (err) {
+    errEl.textContent = err.message;
+  }
+});
+</script>
+</body>
+</html>
