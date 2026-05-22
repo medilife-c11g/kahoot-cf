@@ -1,7 +1,6 @@
 name = "kahoot-cf"
 main = "src/index.ts"
-# account_id will be auto-detected by `wrangler login` — uncomment + fill if needed:
-# account_id = "your-cloudflare-account-id"
+account_id = "6887f2bfdc7c2d3a0e6681d6877322db"
 compatibility_date = "2025-04-01"
 compatibility_flags = ["nodejs_compat"]
 
