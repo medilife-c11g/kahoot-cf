@@ -59,6 +59,24 @@ export class GameRoom {
   questionTimer: number | null = null;
   startedAt = 0;
 
+  // Per-question detailed results, accumulated as questions finish.
+  // Each entry captures the question text/options/correct answer + every
+  // player's response (or 'no answer' for those who timed out).
+  perQuestionResults: Array<{
+    index: number;
+    text: string;
+    options: string[];
+    correctIndex: number;
+    timeLimitSec: number;
+    answers: Array<{
+      nickname: string;
+      choice: number | null;
+      correct: boolean;
+      timeMs: number | null;
+      pointsEarned: number;
+    }>;
+  }> = [];
+
   constructor(state: DurableObjectState, env: Env) {
     this.state = state;
     this.env = env;
@@ -253,7 +271,9 @@ export class GameRoom {
     if (this.questionTimer !== null) { clearTimeout(this.questionTimer); this.questionTimer = null; }
 
     // Score: 1000 pts max, scaled by speed; 0 if wrong.
+    // Also build per-question detail for CSV export.
     const counts = new Array(q.options.length).fill(0);
+    const perPlayerEarned = new Map<string, number>();
     for (const [pid, ans] of this.answers) {
       counts[ans.choice]++;
       const player = this.players.get(pid);
@@ -262,6 +282,9 @@ export class GameRoom {
         const frac = 1 - (ans.timeMs / (q.timeLimitSec * 1000));
         const pts = Math.max(500, Math.round(500 + 500 * Math.max(0, frac)));
         player.score += pts;
+        perPlayerEarned.set(pid, pts);
+      } else {
+        perPlayerEarned.set(pid, 0);
       }
     }
 
@@ -270,6 +293,35 @@ export class GameRoom {
       const p = this.players.get(pid);
       if (p) this.send(p.ws, { t: 'answer-ack', correct: ans.choice === q.correctIndex });
     }
+
+    // Build per-question detail for CSV export (includes 'no answer' players)
+    const perQuestionAnswers = [...this.players.values()].map((p) => {
+      const ans = this.answers.get(p.id);
+      if (!ans) {
+        return {
+          nickname: p.nickname,
+          choice: null,
+          correct: false,
+          timeMs: null,
+          pointsEarned: 0,
+        };
+      }
+      return {
+        nickname: p.nickname,
+        choice: ans.choice,
+        correct: ans.choice === q.correctIndex,
+        timeMs: ans.timeMs,
+        pointsEarned: perPlayerEarned.get(p.id) ?? 0,
+      };
+    });
+    this.perQuestionResults.push({
+      index: this.currentIndex,
+      text: q.text,
+      options: [...q.options],
+      correctIndex: q.correctIndex,
+      timeLimitSec: q.timeLimitSec,
+      answers: perQuestionAnswers,
+    });
 
     const leaderboard = [...this.players.values()]
       .sort((a, b) => b.score - a.score)
@@ -295,8 +347,12 @@ export class GameRoom {
       .map((p) => ({ nickname: p.nickname, score: p.score }));
     this.broadcastAll({ t: 'ended', leaderboard });
 
-    // Persist history to D1
+    // Persist history to D1 — includes both leaderboard AND per-question detail
     try {
+      const resultsBlob = JSON.stringify({
+        leaderboard,
+        questionResults: this.perQuestionResults,
+      });
       await this.env.DB.prepare(
         'INSERT INTO game_history (id, quiz_id, host_id, pin, started_at, ended_at, total_players, results_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
       ).bind(
@@ -307,7 +363,7 @@ export class GameRoom {
         this.startedAt,
         Date.now(),
         this.players.size,
-        JSON.stringify(leaderboard),
+        resultsBlob,
       ).run();
     } catch (e) {
       console.error('failed to persist game history', e);

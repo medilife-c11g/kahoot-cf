@@ -121,17 +121,48 @@ games.get('/history/:gameId/csv', requireAuth, async (c) => {
   }>();
   if (!row) return c.json({ error: 'game not found' }, 404);
 
+  // Parse results_json — supports both old format (array of leaderboard entries)
+  // and new format ({ leaderboard, questionResults }).
   let leaderboard: { nickname: string; score: number }[] = [];
-  try { leaderboard = JSON.parse(row.results_json ?? '[]'); } catch { /* keep empty */ }
+  let questionResults: Array<{
+    index: number;
+    text: string;
+    options: string[];
+    correctIndex: number;
+    timeLimitSec: number;
+    answers: Array<{
+      nickname: string;
+      choice: number | null;
+      correct: boolean;
+      timeMs: number | null;
+      pointsEarned: number;
+    }>;
+  }> = [];
+  try {
+    const parsed = JSON.parse(row.results_json ?? '[]');
+    if (Array.isArray(parsed)) {
+      leaderboard = parsed;
+    } else {
+      leaderboard = parsed.leaderboard ?? [];
+      questionResults = parsed.questionResults ?? [];
+    }
+  } catch { /* keep empty */ }
 
-  const csvEscape = (v: string | number): string => {
-    const s = String(v ?? '');
+  const csvEscape = (v: string | number | null | undefined): string => {
+    if (v === null || v === undefined) return '';
+    const s = String(v);
     if (/[",\n\r]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
     return s;
   };
   const fmtDate = (ms: number | null): string => ms ? new Date(ms).toISOString() : '';
+  const optionLabel = (idx: number | null, options: string[]): string => {
+    if (idx === null || idx === undefined || idx < 0 || idx >= options.length) return '(no answer)';
+    const letter = String.fromCharCode(65 + idx); // 0→A, 1→B, ...
+    return `${letter}. ${options[idx] ?? ''}`;
+  };
 
   const lines: string[] = [];
+  // === Section 1: Game summary ===
   lines.push('Game Summary');
   lines.push(`Quiz Title,${csvEscape(row.quiz_title ?? '(deleted quiz)')}`);
   lines.push(`PIN,${csvEscape(row.pin)}`);
@@ -139,10 +170,48 @@ games.get('/history/:gameId/csv', requireAuth, async (c) => {
   lines.push(`Ended At (UTC),${csvEscape(fmtDate(row.ended_at))}`);
   lines.push(`Total Players,${csvEscape(row.total_players)}`);
   lines.push('');
+
+  // === Section 2: Final leaderboard ===
+  lines.push('Final Leaderboard');
   lines.push('Rank,Nickname,Score');
   leaderboard.forEach((p, i) => {
     lines.push(`${i + 1},${csvEscape(p.nickname)},${csvEscape(p.score)}`);
   });
+  lines.push('');
+
+  // === Section 3: Per-question detail (NEW; only present for games recorded
+  // after this feature was added) ===
+  if (questionResults.length > 0) {
+    lines.push('Per-Question Detail');
+    lines.push('Q#,Question Text,Correct Option,Player Nickname,Player Choice,Correct?,Time (s),Points Earned');
+    for (const qr of questionResults) {
+      const qNum = qr.index + 1;
+      const qText = csvEscape(qr.text);
+      const correctOpt = csvEscape(optionLabel(qr.correctIndex, qr.options));
+      for (const a of qr.answers) {
+        const playerChoice = a.choice === null
+          ? '(no answer)'
+          : optionLabel(a.choice, qr.options);
+        const timeSec = a.timeMs === null ? '' : (a.timeMs / 1000).toFixed(2);
+        const correctMark = a.choice === null ? '—' : (a.correct ? 'Yes' : 'No');
+        lines.push([
+          qNum,
+          qText,
+          correctOpt,
+          csvEscape(a.nickname),
+          csvEscape(playerChoice),
+          correctMark,
+          timeSec,
+          a.pointsEarned,
+        ].join(','));
+      }
+    }
+    lines.push('');
+  } else {
+    lines.push('Per-Question Detail');
+    lines.push('(not available — this game was recorded before per-question tracking was enabled)');
+    lines.push('');
+  }
 
   const csv = lines.join('\r\n') + '\r\n';
   const filename = `kahoot-results-${row.pin}-${(row.started_at || Date.now())}.csv`;
