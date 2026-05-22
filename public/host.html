@@ -82,6 +82,13 @@ function question(m) {
 
 function results(m) {
   if (timerHandle) { clearInterval(timerHandle); timerHandle = null; }
+  const answeredCount = (m.counts || []).reduce((a, b) => a + b, 0);
+  const totalCount = m.totalPlayers ?? answeredCount;
+  const notAnswered = m.notAnswered || [];
+  const pctAnswered = totalCount > 0 ? Math.round((answeredCount / totalCount) * 100) : 0;
+  const correctCount = m.counts?.[m.correctIndex] ?? 0;
+  const pctCorrect = answeredCount > 0 ? Math.round((correctCount / answeredCount) * 100) : 0;
+
   render(`
     <div class="results-stage">
       <h2>Results</h2>
@@ -93,6 +100,20 @@ function results(m) {
           </div>
         `).join('')}
       </div>
+
+      <div class="answer-stats" style="margin: 16px 0; padding: 12px 16px; background: #f5f5f5; border-radius: 6px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px 24px;">
+        <div><strong>Answered:</strong> ${answeredCount} / ${totalCount} (${pctAnswered}%)</div>
+        <div><strong>Correct:</strong> ${correctCount} / ${answeredCount} (${pctCorrect}%)</div>
+        ${notAnswered.length > 0 ? `
+          <div style="grid-column: 1 / -1; padding-top: 8px; border-top: 1px solid #ddd;">
+            <strong style="color: #c0392b;">⚠ Didn't answer (${notAnswered.length}):</strong>
+            <span style="color: #555;">${notAnswered.map(escapeHtml).join(', ')}</span>
+          </div>
+        ` : `
+          <div style="grid-column: 1 / -1; color: #2e7d32;">✓ All players answered</div>
+        `}
+      </div>
+
       <div class="leaderboard">
         <h3>Leaderboard</h3>
         <ol>${m.leaderboard.map((p) => `<li><span>${escapeHtml(p.nickname)}</span><span>${p.score}</span></li>`).join('')}</ol>

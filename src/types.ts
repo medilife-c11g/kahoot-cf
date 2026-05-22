@@ -37,7 +37,7 @@ export type ServerMsg =
   | { t: 'lobby'; players: { id: string; nickname: string }[]; quizTitle: string }
   | { t: 'question'; index: number; total: number; text: string; options: string[]; timeLimitSec: number; startedAt: number }
   | { t: 'answer-ack'; correct: boolean | null }
-  | { t: 'results'; index: number; correctIndex: number; counts: number[]; leaderboard: { nickname: string; score: number }[] }
+  | { t: 'results'; index: number; correctIndex: number; counts: number[]; leaderboard: { nickname: string; score: number }[]; notAnswered?: string[]; totalPlayers?: number }
   | { t: 'ended'; leaderboard: { nickname: string; score: number }[] }
   | { t: 'error'; message: string }
   | { t: 'pong' };

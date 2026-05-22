@@ -179,8 +179,37 @@ games.get('/history/:gameId/csv', requireAuth, async (c) => {
   });
   lines.push('');
 
-  // === Section 3: Per-question detail (NEW; only present for games recorded
-  // after this feature was added) ===
+  // === Section 3: Question Stats (NEW) — quick aggregate per question ===
+  if (questionResults.length > 0) {
+    lines.push('Question Stats');
+    lines.push('Q#,Question Text,Correct Option,# Answered,# Correct,% Correct,# Did Not Answer,Avg Time of Correct (s)');
+    for (const qr of questionResults) {
+      const qNum = qr.index + 1;
+      const total = qr.answers.length;
+      const answered = qr.answers.filter((a) => a.choice !== null);
+      const correct = answered.filter((a) => a.correct);
+      const notAns = total - answered.length;
+      const pctCorrect = answered.length > 0
+        ? ((correct.length / answered.length) * 100).toFixed(1)
+        : '0.0';
+      const avgCorrectTimeSec = correct.length > 0
+        ? (correct.reduce((s, a) => s + (a.timeMs ?? 0), 0) / correct.length / 1000).toFixed(2)
+        : '';
+      lines.push([
+        qNum,
+        csvEscape(qr.text),
+        csvEscape(optionLabel(qr.correctIndex, qr.options)),
+        answered.length,
+        correct.length,
+        pctCorrect,
+        notAns,
+        avgCorrectTimeSec,
+      ].join(','));
+    }
+    lines.push('');
+  }
+
+  // === Section 4: Per-question detail (every player's answer) ===
   if (questionResults.length > 0) {
     lines.push('Per-Question Detail');
     lines.push('Q#,Question Text,Correct Option,Player Nickname,Player Choice,Correct?,Time (s),Points Earned');
@@ -213,7 +242,8 @@ games.get('/history/:gameId/csv', requireAuth, async (c) => {
     lines.push('');
   }
 
-  const csv = lines.join('\r\n') + '\r\n';
+  // Prepend UTF-8 BOM so Excel opens Chinese/Unicode text correctly
+  const csv = '﻿' + lines.join('\r\n') + '\r\n';
   const filename = `kahoot-results-${row.pin}-${(row.started_at || Date.now())}.csv`;
   return new Response(csv, {
     headers: {

@@ -328,6 +328,12 @@ export class GameRoom {
       .slice(0, 20)
       .map((p) => ({ nickname: p.nickname, score: p.score }));
 
+    // Compute who didn't answer this question (for host display)
+    const notAnswered: string[] = [];
+    for (const p of this.players.values()) {
+      if (!this.answers.has(p.id)) notAnswered.push(p.nickname);
+    }
+
     this.status = 'results';
     this.broadcastAll({
       t: 'results',
@@ -335,6 +341,8 @@ export class GameRoom {
       correctIndex: q.correctIndex,
       counts,
       leaderboard,
+      notAnswered,
+      totalPlayers: this.players.size,
     });
   }
 
