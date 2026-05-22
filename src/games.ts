@@ -91,4 +91,67 @@ games.get('/ws/play', async (c) => {
   return c.env.GAME_ROOM.get(id).fetch(`https://room/ws/play?pin=${pin}&nickname=${encodeURIComponent(nickname)}`, c.req.raw);
 });
 
+// GET /api/games/history — list past games hosted by the authenticated user
+games.get('/history', requireAuth, async (c) => {
+  const userId = c.get('userId');
+  const rows = await c.env.DB.prepare(
+    `SELECT h.id, h.quiz_id, q.title AS quiz_title, h.pin, h.started_at, h.ended_at, h.total_players
+     FROM game_history h
+     LEFT JOIN quizzes q ON q.id = h.quiz_id
+     WHERE h.host_id = ?
+     ORDER BY h.started_at DESC
+     LIMIT 100`,
+  ).bind(userId).all();
+  return c.json({ games: rows.results ?? [] });
+});
+
+// GET /api/games/history/:gameId/csv — download CSV of a single past game
+games.get('/history/:gameId/csv', requireAuth, async (c) => {
+  const userId = c.get('userId');
+  const gameId = c.req.param('gameId');
+  const row = await c.env.DB.prepare(
+    `SELECT h.id, h.pin, h.started_at, h.ended_at, h.total_players, h.results_json,
+            q.title AS quiz_title
+     FROM game_history h
+     LEFT JOIN quizzes q ON q.id = h.quiz_id
+     WHERE h.id = ? AND h.host_id = ?`,
+  ).bind(gameId, userId).first<{
+    id: string; pin: string; started_at: number; ended_at: number;
+    total_players: number; results_json: string; quiz_title: string;
+  }>();
+  if (!row) return c.json({ error: 'game not found' }, 404);
+
+  let leaderboard: { nickname: string; score: number }[] = [];
+  try { leaderboard = JSON.parse(row.results_json ?? '[]'); } catch { /* keep empty */ }
+
+  const csvEscape = (v: string | number): string => {
+    const s = String(v ?? '');
+    if (/[",\n\r]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+    return s;
+  };
+  const fmtDate = (ms: number | null): string => ms ? new Date(ms).toISOString() : '';
+
+  const lines: string[] = [];
+  lines.push('Game Summary');
+  lines.push(`Quiz Title,${csvEscape(row.quiz_title ?? '(deleted quiz)')}`);
+  lines.push(`PIN,${csvEscape(row.pin)}`);
+  lines.push(`Started At (UTC),${csvEscape(fmtDate(row.started_at))}`);
+  lines.push(`Ended At (UTC),${csvEscape(fmtDate(row.ended_at))}`);
+  lines.push(`Total Players,${csvEscape(row.total_players)}`);
+  lines.push('');
+  lines.push('Rank,Nickname,Score');
+  leaderboard.forEach((p, i) => {
+    lines.push(`${i + 1},${csvEscape(p.nickname)},${csvEscape(p.score)}`);
+  });
+
+  const csv = lines.join('\r\n') + '\r\n';
+  const filename = `kahoot-results-${row.pin}-${(row.started_at || Date.now())}.csv`;
+  return new Response(csv, {
+    headers: {
+      'Content-Type': 'text/csv; charset=utf-8',
+      'Content-Disposition': `attachment; filename="${filename}"`,
+    },
+  });
+});
+
 export default games;

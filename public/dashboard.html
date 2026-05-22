@@ -20,6 +20,10 @@
     <ul id="list" class="quiz-list"></ul>
     <p id="empty" class="muted hidden" style="margin-top: 24px;">No quizzes yet. Create one to get started.</p>
 
+    <h2 style="margin-top: 56px;">Past games</h2>
+    <ul id="history-list" class="quiz-list"></ul>
+    <p id="history-empty" class="muted hidden" style="margin-top: 12px;">No past games yet. Host a quiz to see results here.</p>
+
     <div class="deco-row">
       <div class="d-red"></div>
       <div class="d-yellow"></div>
@@ -303,7 +307,39 @@ function csvRows(text) {
 
 function escape(s) { return String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
 
+async function loadHistory() {
+  const histListEl = document.getElementById('history-list');
+  const histEmptyEl = document.getElementById('history-empty');
+  try {
+    const { games } = await api.get('/api/games/history');
+    histListEl.innerHTML = '';
+    if (!games || !games.length) {
+      histEmptyEl.classList.remove('hidden');
+      return;
+    }
+    histEmptyEl.classList.add('hidden');
+    for (const g of games) {
+      const startedStr = g.started_at ? new Date(g.started_at).toLocaleString() : '—';
+      const li = document.createElement('li');
+      li.className = 'quiz-item';
+      li.innerHTML = `
+        <div>
+          <div class="quiz-title">${escape(g.quiz_title || '(deleted quiz)')}</div>
+          <div class="quiz-meta">PIN ${escape(g.pin)} · ${escape(startedStr)} · ${g.total_players || 0} player(s)</div>
+        </div>
+        <div class="actions">
+          <a class="btn primary" href="/api/games/history/${encodeURIComponent(g.id)}/csv" download>↓ CSV</a>
+        </div>
+      `;
+      histListEl.appendChild(li);
+    }
+  } catch (e) {
+    console.error('Failed to load history', e);
+  }
+}
+
 refresh();
+loadHistory();
 </script>
 </body>
 </html>
